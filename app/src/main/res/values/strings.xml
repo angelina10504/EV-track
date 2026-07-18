@@ -1,0 +1,47 @@
+<resources>
+    <string name="app_name">EV track</string>
+
+    <!-- Home -->
+    <string name="take_photo">Take Photo</string>
+    <string name="pick_from_gallery">Pick from Gallery</string>
+    <string name="saved_readings">Saved readings</string>
+    <string name="no_readings_yet">No readings yet — take or pick a dashboard photo to start.</string>
+    <string name="camera_permission_denied">Camera permission is required to take a photo.</string>
+    <string name="badge_edited">EDITED</string>
+    <string name="value_missing">–</string>
+    <string name="reading_values_format">Odo: %1$s km · Battery: %2$s%% · Range: %3$s km</string>
+
+    <!-- Review -->
+    <string name="processing_image">Reading dashboard…</string>
+    <string name="dashboard_photo">Dashboard photo</string>
+    <string name="hint_odometer">Odometer (km)</string>
+    <string name="hint_battery">Battery (%)</string>
+    <string name="hint_range">Range (km)</string>
+    <string name="hint_not_detected">not detected</string>
+    <string name="event_type">Event type</string>
+    <string name="event_charge_start">Charge start</string>
+    <string name="event_charge_end">Charge end</string>
+    <string name="event_manual">Manual</string>
+    <string name="save">Save</string>
+    <string name="discard">Discard</string>
+    <string name="reading_saved">Reading saved</string>
+    <string name="no_text_detected">No text detected — try a clearer photo. You can still enter values manually.</string>
+    <string name="debug_header_collapsed">Debug: raw OCR ▸</string>
+    <string name="debug_header_expanded">Debug: raw OCR ▾</string>
+    <string name="debug_no_lines">(no OCR lines)</string>
+    <string name="debug_notes_header">Parser notes:</string>
+
+    <!-- Sanity warnings -->
+    <string name="warn_battery_range">Battery must be between 0 and 100</string>
+    <string name="warn_battery_cleared">Battery was outside 0–100 and has been cleared — please re-enter</string>
+    <string name="warn_odo_lower">Odometer lower than last reading (%1$s) — please verify</string>
+    <string name="warn_odo_jump">More than 1,000 km above last reading (%1$s) — please verify</string>
+    <string name="warn_range_high">Range above 250 km is suspicious for a scooter — please verify</string>
+
+    <!-- Detail -->
+    <string name="reading_detail">Reading detail</string>
+    <string name="detail_odo">Odometer: %1$s km</string>
+    <string name="detail_battery">Battery: %1$s%%</string>
+    <string name="detail_range">Range: %1$s km</string>
+    <string name="detail_ocr_values">Raw OCR values — odo: %1$s, battery: %2$s, range: %3$s</string>
+</resources>
