@@ -115,18 +115,34 @@ class ReviewViewModel(
             val pipelineNotes = mutableListOf<String>()
             val previews = mutableListOf<VariantPreview>()
             if (isMissing(extraction)) {
-                val crop = withContext(Dispatchers.Default) {
+                val display = withContext(Dispatchers.Default) {
                     ImageUtils.cropBrightDisplay(retryBitmap ?: bitmap)
                 }
-                if (crop != null) {
-                    var workingCrop: Bitmap = crop
-                    withContext(Dispatchers.Default) { ImageUtils.inpaintGlare(crop) }
+                if (display != null) {
+                    val cropBitmap = display.bitmap
+                    val cropTag = if (display.warpApplied) "WARP" else "crop"
+                    if (display.warpApplied) {
+                        pipelineNotes += "display warp: applied, skew ~%.1f°"
+                            .format(display.skewDegrees ?: 0.0)
+                    } else if (display.skewDegrees != null) {
+                        pipelineNotes += "display warp: not applied, skew ~%.1f° (below %.0f° threshold)"
+                            .format(display.skewDegrees, 5.0)
+                    }
+                    previews += VariantPreview(
+                        if (display.warpApplied) "warped crop" else "display crop",
+                        thumbnailOf(cropBitmap)
+                    )
+
+                    var workingCrop: Bitmap = cropBitmap
+                    withContext(Dispatchers.Default) { ImageUtils.inpaintGlare(cropBitmap) }
                         ?.let { (cleaned, regionCount, coveredFraction) ->
                             workingCrop = cleaned
                             val percent = "%.1f".format(coveredFraction * 100)
                             pipelineNotes += "glare mask: inpainted $regionCount region(s), $percent% of crop"
                             previews += VariantPreview("glare-masked crop", thumbnailOf(cleaned))
                         }
+
+                    // Rungs 2–4: preprocessing-variant ladder (OCR-text path).
                     for (variant in DISPLAY_CROP_VARIANTS) {
                         if (!isMissing(extraction)) break
                         val prepped = withContext(Dispatchers.Default) {
@@ -139,13 +155,33 @@ class ReviewViewModel(
                         extraction = ExtractionMerger.merge(
                             extraction, parser.parse(cropLines), "display-crop/${variant.name}"
                         )
-                        recordSources(sources, before, extraction, "$engine / ${variant.name} / display-crop")
+                        recordSources(sources, before, extraction, "$engine / ${variant.name} / $cropTag")
+                    }
+
+                    // Rungs 5–6 on the rectified crop: the seven-segment and
+                    // anchor-region decoders work on pixels relative to boxes,
+                    // so they benefit most from the warped, fronto-parallel crop.
+                    if (isMissing(extraction)) {
+                        val cropLines = ocrStage(cropBitmap, PrepVariant.ORIGINAL)
+                        if (cropLines.isNotEmpty()) {
+                            val beforeSeg = extraction
+                            extraction = segmentRepair(
+                                extraction, cropBitmap, cropLines, "${ExtractionMerger.SEGMENT_PASS} ($cropTag)"
+                            )
+                            recordSources(sources, beforeSeg, extraction, "7seg / $cropTag / segment-decode")
+                            if (isMissing(extraction)) {
+                                val beforeAnchor = extraction
+                                extraction = anchorRegionDecode(extraction, cropBitmap, cropLines)
+                                recordSources(sources, beforeAnchor, extraction, "7seg / $cropTag / anchor-region")
+                            }
+                        }
                     }
                 }
             }
 
-            // Rung 5: geometric seven-segment repair of digit-bearing line
-            // boxes, per source bitmap (boxes live in that bitmap's space).
+            // Rung 5 (full frame): geometric seven-segment repair of digit-
+            // bearing line boxes, per source bitmap (boxes live in that
+            // bitmap's space). Runs when no display crop was available.
             if (isMissing(extraction)) {
                 val before = extraction
                 extraction = segmentRepair(extraction, bitmap, lines, ExtractionMerger.SEGMENT_PASS)
@@ -159,8 +195,8 @@ class ReviewViewModel(
                 recordSources(sources, before, extraction, "7seg / ORIGINAL / segment-decode-highres")
             }
 
-            // Rung 6: when an anchor exists but OCR produced no line at all
-            // for its value, decode the region below the anchor box.
+            // Rung 6 (full frame): decode the region below an anchor whose
+            // value OCR never produced a line for.
             if (isMissing(extraction)) {
                 val before = extraction
                 extraction = anchorRegionDecode(

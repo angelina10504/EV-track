@@ -3,10 +3,13 @@ package com.rdxindia.evtrack.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
+import kotlin.math.roundToInt
 
 object ImageUtils {
 
@@ -108,13 +111,25 @@ object ImageUtils {
         )
     }
 
+    /** Skew above this many degrees on any display edge triggers a perspective warp. */
+    private const val WARP_SKEW_THRESHOLD_DEG = 5.0
+
     /**
-     * Detects the backlit display in [bitmap] and returns a cropped copy of it
-     * (with margin), or null when no plausible display region is found or the
-     * crop wouldn't be meaningfully smaller than the full frame.
+     * A cropped/rectified display image plus how it was produced.
+     * [skewDegrees] is the estimated max edge skew (null if no quad was fitted).
      */
-    fun cropBrightDisplay(bitmap: Bitmap): Bitmap? {
-        val analysisMax = 200
+    data class DisplayCrop(val bitmap: Bitmap, val warpApplied: Boolean, val skewDegrees: Double?)
+
+    /**
+     * Detects the backlit display in [bitmap]. When the display is skewed by
+     * more than [WARP_SKEW_THRESHOLD_DEG], perspective-warps its fitted quad to
+     * a fronto-parallel rectangle; otherwise returns a plain bounding-box crop.
+     * Null when no plausible display region is found.
+     */
+    fun cropBrightDisplay(bitmap: Bitmap): DisplayCrop? {
+        // Slightly higher analysis resolution than the bbox path needs, for
+        // better corner precision when warping.
+        val analysisMax = 384
         val longEdge = maxOf(bitmap.width, bitmap.height)
         if (longEdge <= 0) return null
         val scale = analysisMax.toFloat() / longEdge
@@ -138,10 +153,40 @@ object ImageUtils {
             (299 * ((p shr 16) and 0xFF) + 587 * ((p shr 8) and 0xFF) + 114 * (p and 0xFF)) / 1000
         }
 
-        val region = BrightRegionDetector.detect(luminance, aw, ah) ?: return null
-
+        val display = BrightRegionDetector.detectDisplay(luminance, aw, ah) ?: return null
         val fx = bitmap.width.toFloat() / aw
         val fy = bitmap.height.toFloat() / ah
+        val quad = display.quad
+        val skew = quad.maxEdgeSkewDegrees()
+
+        // Warp only a trustworthy, clearly-skewed quad; otherwise bounding box.
+        if (!quad.isDegenerate() && skew > WARP_SKEW_THRESHOLD_DEG) {
+            val tl = full(quad.tl, fx, fy)
+            val tr = full(quad.tr, fx, fy)
+            val br = full(quad.br, fx, fy)
+            val bl = full(quad.bl, fx, fy)
+            val outW = (((dist(tl, tr) + dist(bl, br)) / 2.0)).roundToInt()
+                .coerceIn(64, OCR_RETRY_DIMENSION)
+            val outH = (((dist(tl, bl) + dist(tr, br)) / 2.0)).roundToInt()
+                .coerceIn(64, OCR_RETRY_DIMENSION)
+            val warped = warpQuadToRect(bitmap, tl, tr, br, bl, outW, outH)
+            if (warped != null) return DisplayCrop(warped, warpApplied = true, skewDegrees = skew)
+        }
+
+        val bbox = boundingBoxCrop(bitmap, display.region, fx, fy) ?: return null
+        return DisplayCrop(bbox, warpApplied = false, skewDegrees = skew)
+    }
+
+    private fun full(p: QuadFitter.Pt, fx: Float, fy: Float): FloatArray =
+        floatArrayOf((p.x * fx).toFloat(), (p.y * fy).toFloat())
+
+    private fun dist(a: FloatArray, b: FloatArray): Double {
+        val dx = (a[0] - b[0]).toDouble()
+        val dy = (a[1] - b[1]).toDouble()
+        return kotlin.math.hypot(dx, dy)
+    }
+
+    private fun boundingBoxCrop(bitmap: Bitmap, region: BrightRegionDetector.Region, fx: Float, fy: Float): Bitmap? {
         val marginX = (region.width * fx * 0.10f).toInt()
         val marginY = (region.height * fy * 0.10f).toInt()
         val left = ((region.left * fx).toInt() - marginX).coerceAtLeast(0)
@@ -152,8 +197,30 @@ object ImageUtils {
         val cropH = bottom - top + 1
         if (cropW < 64 || cropH < 64) return null
         if (cropW.toLong() * cropH > bitmap.width.toLong() * bitmap.height * 85 / 100) return null
-
         return Bitmap.createBitmap(bitmap, left, top, cropW, cropH)
+    }
+
+    /**
+     * Perspective-warps the source quad (tl, tr, br, bl, each [x, y]) to an
+     * [outW]×[outH] fronto-parallel rectangle via a homography. Returns null on
+     * a degenerate mapping.
+     */
+    fun warpQuadToRect(
+        src: Bitmap,
+        tl: FloatArray, tr: FloatArray, br: FloatArray, bl: FloatArray,
+        outW: Int, outH: Int
+    ): Bitmap? {
+        if (outW < 1 || outH < 1) return null
+        val srcPts = floatArrayOf(tl[0], tl[1], tr[0], tr[1], br[0], br[1], bl[0], bl[1])
+        val dstPts = floatArrayOf(
+            0f, 0f, (outW - 1).toFloat(), 0f,
+            (outW - 1).toFloat(), (outH - 1).toFloat(), 0f, (outH - 1).toFloat()
+        )
+        val matrix = Matrix()
+        if (!matrix.setPolyToPoly(srcPts, 0, dstPts, 0, 4)) return null
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawBitmap(src, matrix, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
+        return out
     }
 
     /**

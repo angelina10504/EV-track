@@ -12,7 +12,13 @@ object BrightRegionDetector {
         val height get() = bottom - top + 1
     }
 
-    fun detect(luminance: IntArray, width: Int, height: Int): Region? {
+    /** The display's axis-aligned box plus the quad fitted to its contour. */
+    data class Display(val region: Region, val quad: QuadFitter.Quad)
+
+    fun detect(luminance: IntArray, width: Int, height: Int): Region? =
+        detectDisplay(luminance, width, height)?.region
+
+    fun detectDisplay(luminance: IntArray, width: Int, height: Int): Display? {
         if (width < 16 || height < 16 || luminance.size < width * height) return null
 
         val threshold = otsuThreshold(luminance, width * height)
@@ -24,18 +30,22 @@ object BrightRegionDetector {
 
         val visited = BooleanArray(width * height)
         val stack = IntArray(width * height)
-        var best: Region? = null
+        var best: Display? = null
         var bestArea = 0
 
         for (seed in 0 until width * height) {
             if (!bright[seed] || visited[seed]) continue
 
-            // Flood-fill one 4-connected component, tracking bounds and area.
+            // Flood-fill one 4-connected component, tracking its bounding box,
+            // area, and the four corner extremes for quad fitting.
             var top = height
             var bottom = 0
             var left = width
             var right = 0
             var area = 0
+            var minSumV = Int.MAX_VALUE; var maxSumV = Int.MIN_VALUE
+            var minDiffV = Int.MAX_VALUE; var maxDiffV = Int.MIN_VALUE
+            var minSumP = seed; var maxSumP = seed; var minDiffP = seed; var maxDiffP = seed
             var sp = 0
             stack[sp++] = seed
             visited[seed] = true
@@ -48,6 +58,12 @@ object BrightRegionDetector {
                 if (x > right) right = x
                 if (y < top) top = y
                 if (y > bottom) bottom = y
+                val sum = x + y
+                val diff = x - y
+                if (sum < minSumV) { minSumV = sum; minSumP = index }
+                if (sum > maxSumV) { maxSumV = sum; maxSumP = index }
+                if (diff < minDiffV) { minDiffV = diff; minDiffP = index }
+                if (diff > maxDiffV) { maxDiffV = diff; maxDiffP = index }
 
                 if (x > 0) {
                     val n = index - 1
@@ -77,11 +93,17 @@ object BrightRegionDetector {
             val plausible = areaFraction >= 0.02 && aspect in 0.8..4.5 && fill >= 0.45
             if (plausible && area > bestArea) {
                 bestArea = area
-                best = Region(left, top, right, bottom)
+                val quad = QuadFitter.fromExtremes(
+                    pt(minSumP, width), pt(maxSumP, width), pt(maxDiffP, width), pt(minDiffP, width)
+                )
+                best = Display(Region(left, top, right, bottom), quad)
             }
         }
         return best
     }
+
+    private fun pt(index: Int, width: Int): QuadFitter.Pt =
+        QuadFitter.Pt((index % width).toDouble(), (index / width).toDouble())
 
     private fun otsuThreshold(lum: IntArray, n: Int): Int {
         val hist = IntArray(256)
