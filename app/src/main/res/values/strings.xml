@@ -11,6 +11,17 @@
     <string name="value_missing">–</string>
     <string name="reading_values_format">Odo: %1$s km · Battery: %2$s%% · Range: %3$s km</string>
 
+    <!-- Guided capture -->
+    <string name="capture_hint">Fit the dashboard display inside the frame.\nTap the display to focus, then capture.</string>
+    <string name="capture">Capture</string>
+    <string name="torch">Torch</string>
+    <string name="torch_off">Torch off</string>
+    <string name="camera_error">Camera error — please try again.</string>
+    <string name="blurry_title">Photo looks blurry</string>
+    <string name="blurry_message">Text this blurry usually can\'t be read. Hold steady, tap the display to focus, and retake for a better result.</string>
+    <string name="retake">Retake</string>
+    <string name="use_anyway">Use anyway</string>
+
     <!-- Review -->
     <string name="processing_image">Reading dashboard…</string>
     <string name="dashboard_photo">Dashboard photo</string>
@@ -30,6 +41,10 @@
     <string name="debug_header_expanded">Debug: raw OCR ▾</string>
     <string name="debug_no_lines">(no OCR lines)</string>
     <string name="debug_notes_header">Parser notes:</string>
+    <string name="debug_sources_header">Field sources:</string>
+    <string name="variants_header_collapsed">Debug: preprocessed variants ▸</string>
+    <string name="variants_header_expanded">Debug: preprocessed variants ▾</string>
+    <string name="variant_preview_image">Preprocessed variant preview</string>
 
     <!-- Sanity warnings -->
     <string name="warn_battery_range">Battery must be between 0 and 100</string>

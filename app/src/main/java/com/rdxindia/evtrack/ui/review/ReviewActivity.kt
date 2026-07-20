@@ -52,6 +52,14 @@ class ReviewActivity : AppCompatActivity() {
             )
         }
 
+        binding.headerVariants.setOnClickListener {
+            val visible = binding.variantContainer.visibility == View.VISIBLE
+            binding.variantContainer.visibility = if (visible) View.GONE else View.VISIBLE
+            binding.headerVariants.setText(
+                if (visible) R.string.variants_header_collapsed else R.string.variants_header_expanded
+            )
+        }
+
         binding.inputOdo.doAfterTextChanged { validateFields() }
         binding.inputBattery.doAfterTextChanged { validateFields() }
         binding.inputRange.doAfterTextChanged { validateFields() }
@@ -104,7 +112,32 @@ class ReviewActivity : AppCompatActivity() {
             binding.inputBattery.setText(extraction.battery?.toString() ?: "")
             binding.inputRange.setText(extraction.range?.toString() ?: "")
             renderDebug(extraction)
+            renderVariantPreviews(state.variantPreviews)
             validateFields()
+        }
+    }
+
+    private fun renderVariantPreviews(previews: List<VariantPreview>) {
+        if (previews.isEmpty()) {
+            binding.headerVariants.visibility = View.GONE
+            return
+        }
+        binding.headerVariants.visibility = View.VISIBLE
+        binding.variantContainer.removeAllViews()
+        val density = resources.displayMetrics.density
+        for (preview in previews) {
+            val label = android.widget.TextView(this).apply {
+                text = preview.label
+                typeface = android.graphics.Typeface.MONOSPACE
+                setPadding(0, (8 * density).toInt(), 0, (2 * density).toInt())
+            }
+            val image = android.widget.ImageView(this).apply {
+                adjustViewBounds = true
+                contentDescription = getString(R.string.variant_preview_image)
+                setImageBitmap(preview.bitmap)
+            }
+            binding.variantContainer.addView(label)
+            binding.variantContainer.addView(image)
         }
     }
 
@@ -116,6 +149,12 @@ class ReviewActivity : AppCompatActivity() {
             extraction.rawLines.forEach { line ->
                 builder.append("\"").append(line.text).append("\"  ")
                     .append(line.boxString()).append('\n')
+            }
+        }
+        if (extraction.sources.isNotEmpty()) {
+            builder.append('\n').append(getString(R.string.debug_sources_header)).append('\n')
+            extraction.sources.forEach { (field, source) ->
+                builder.append("• ").append(field).append(": ").append(source).append('\n')
             }
         }
         if (extraction.confidenceNotes.isNotEmpty()) {

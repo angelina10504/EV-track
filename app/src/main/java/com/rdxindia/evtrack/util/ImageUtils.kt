@@ -109,6 +109,80 @@ object ImageUtils {
     }
 
     /**
+     * Detects the backlit display in [bitmap] and returns a cropped copy of it
+     * (with margin), or null when no plausible display region is found or the
+     * crop wouldn't be meaningfully smaller than the full frame.
+     */
+    fun cropBrightDisplay(bitmap: Bitmap): Bitmap? {
+        val analysisMax = 200
+        val longEdge = maxOf(bitmap.width, bitmap.height)
+        if (longEdge <= 0) return null
+        val scale = analysisMax.toFloat() / longEdge
+        val analysis = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * scale).toInt().coerceAtLeast(16),
+                (bitmap.height * scale).toInt().coerceAtLeast(16),
+                true
+            )
+        } else {
+            bitmap
+        }
+
+        val aw = analysis.width
+        val ah = analysis.height
+        val pixels = IntArray(aw * ah)
+        analysis.getPixels(pixels, 0, aw, 0, 0, aw, ah)
+        val luminance = IntArray(aw * ah) { i ->
+            val p = pixels[i]
+            (299 * ((p shr 16) and 0xFF) + 587 * ((p shr 8) and 0xFF) + 114 * (p and 0xFF)) / 1000
+        }
+
+        val region = BrightRegionDetector.detect(luminance, aw, ah) ?: return null
+
+        val fx = bitmap.width.toFloat() / aw
+        val fy = bitmap.height.toFloat() / ah
+        val marginX = (region.width * fx * 0.10f).toInt()
+        val marginY = (region.height * fy * 0.10f).toInt()
+        val left = ((region.left * fx).toInt() - marginX).coerceAtLeast(0)
+        val top = ((region.top * fy).toInt() - marginY).coerceAtLeast(0)
+        val right = ((region.right * fx).toInt() + marginX).coerceAtMost(bitmap.width - 1)
+        val bottom = ((region.bottom * fy).toInt() + marginY).coerceAtMost(bitmap.height - 1)
+        val cropW = right - left + 1
+        val cropH = bottom - top + 1
+        if (cropW < 64 || cropH < 64) return null
+        if (cropW.toLong() * cropH > bitmap.width.toLong() * bitmap.height * 85 / 100) return null
+
+        return Bitmap.createBitmap(bitmap, left, top, cropW, cropH)
+    }
+
+    /**
+     * Inpaints large blown-out glare regions (see [GlareInpainter]) and returns
+     * the cleaned grayscale bitmap with region count and covered fraction, or
+     * null when no qualifying glare region exists.
+     */
+    fun inpaintGlare(bitmap: Bitmap): Triple<Bitmap, Int, Double>? {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w <= 0 || h <= 0) return null
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        val luminance = IntArray(w * h) { i ->
+            val p = pixels[i]
+            (299 * ((p shr 16) and 0xFF) + 587 * ((p shr 8) and 0xFF) + 114 * (p and 0xFF)) / 1000
+        }
+        val result = GlareInpainter.inpaint(luminance, w, h) ?: return null
+        val out = IntArray(w * h) { i ->
+            val v = result.luminance[i].coerceIn(0, 255)
+            (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+        }
+        val cleaned = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
+            setPixels(out, 0, w, 0, 0, w, h)
+        }
+        return Triple(cleaned, result.regionCount, result.coveredFraction)
+    }
+
+    /**
      * Copies the image at [uri] into app-internal storage (filesDir/readings/)
      * so gallery deletions don't break history. Returns the absolute path.
      */

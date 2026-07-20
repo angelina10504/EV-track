@@ -153,6 +153,24 @@
                 android:textIsSelectable="true"
                 android:visibility="gone" />
 
+            <TextView
+                android:id="@+id/headerVariants"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp"
+                android:text="@string/variants_header_collapsed"
+                android:textAppearance="?attr/textAppearanceTitleSmall"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/variantContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

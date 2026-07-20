@@ -7,14 +7,21 @@ package com.rdxindia.evtrack.parser
  */
 object ExtractionMerger {
 
-    const val PASS_SEPARATOR = "— second pass (high-res) —"
+    const val HIGHRES_PASS = "pass2 (high-res)"
+    const val SEGMENT_PASS = "segment-decode"
 
-    fun merge(first: ExtractionResult, second: ExtractionResult): ExtractionResult {
+    fun separatorFor(passName: String): String = "— $passName —"
+
+    fun merge(
+        first: ExtractionResult,
+        second: ExtractionResult,
+        passName: String = HIGHRES_PASS
+    ): ExtractionResult {
         val notes = first.confidenceNotes.toMutableList()
 
         fun pick(field: String, a: Int?, b: Int?): Int? {
             if (a != null) return a
-            if (b != null) notes += "$field: recovered by second-pass OCR (high-res)"
+            if (b != null) notes += "$field: recovered by $passName"
             return b
         }
 
@@ -22,12 +29,12 @@ object ExtractionMerger {
         val battery = pick("battery", first.battery, second.battery)
         val range = pick("range", first.range, second.range)
 
-        notes += second.confidenceNotes.map { "pass2: $it" }
+        notes += second.confidenceNotes.map { "$passName: $it" }
 
         val rawLines = if (second.rawLines.isEmpty()) {
             first.rawLines
         } else {
-            first.rawLines + OcrLine(PASS_SEPARATOR, 0, 0, 0, 0) + second.rawLines
+            first.rawLines + OcrLine(separatorFor(passName), 0, 0, 0, 0) + second.rawLines
         }
         return ExtractionResult(odo, battery, range, rawLines, notes)
     }

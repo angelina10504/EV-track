@@ -9,7 +9,8 @@ data class OcrLine(
     val left: Int,
     val top: Int,
     val right: Int,
-    val bottom: Int
+    val bottom: Int,
+    val confidence: Float? = null
 ) {
     val centerX: Int get() = (left + right) / 2
     val centerY: Int get() = (top + bottom) / 2

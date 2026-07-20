@@ -12,7 +12,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -20,10 +19,10 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.rdxindia.evtrack.EvTrackApp
 import com.rdxindia.evtrack.R
 import com.rdxindia.evtrack.databinding.ActivityMainBinding
+import com.rdxindia.evtrack.ui.capture.CaptureActivity
 import com.rdxindia.evtrack.ui.detail.DetailActivity
 import com.rdxindia.evtrack.ui.review.ReviewActivity
 import kotlinx.coroutines.launch
-import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,18 +34,9 @@ class MainActivity : AppCompatActivity() {
         startActivity(DetailActivity.newIntent(this, reading.id))
     }
 
-    private var pendingCameraUri: Uri? = null
-
     private val pickMedia =
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null) openReview(uri)
-        }
-
-    private val takePicture =
-        registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-            val uri = pendingCameraUri
-            pendingCameraUri = null
-            if (success && uri != null) openReview(uri)
         }
 
     private val requestCameraPermission =
@@ -94,11 +84,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchCamera() {
-        val dir = File(cacheDir, "camera").apply { mkdirs() }
-        val file = File(dir, "capture_${System.currentTimeMillis()}.jpg")
-        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-        pendingCameraUri = uri
-        takePicture.launch(uri)
+        startActivity(CaptureActivity.newIntent(this))
     }
 
     private fun openReview(imageUri: Uri) {
