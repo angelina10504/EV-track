@@ -60,8 +60,14 @@ object GridFilters {
                 val clip = maxOf(1, (clipLimit * count / 256).toInt())
                 var excess = 0
                 for (i in 0..255) if (hist[i] > clip) { excess += hist[i] - clip; hist[i] = clip }
+                // Redistribute the excess exactly (bonus + remainder), so the
+                // histogram keeps its full mass — dropping the remainder sends
+                // uniform tiles' single bin to 255 and turns blank background
+                // into fake ink.
                 val bonus = excess / 256
+                val remainder = excess % 256
                 for (i in 0..255) hist[i] += bonus
+                for (i in 0 until remainder) hist[i]++
                 // Normalize by the clipped histogram's actual mass — using the
                 // original pixel count loses the redistribution round-off and
                 // can collapse the output range.
@@ -226,11 +232,17 @@ object GridFilters {
      * Removes an illumination gradient by dividing the image by a heavily
      * blurred copy of itself, then min-max normalizing to 0–255.
      */
-    fun illuminationFlatten(lum: IntArray, width: Int, height: Int): IntArray {
-        val radius = maxOf(4, width / 8)
+    fun illuminationFlatten(
+        lum: IntArray,
+        width: Int,
+        height: Int,
+        radius: Int = maxOf(4, width / 8)
+    ): IntArray {
         val background = boxBlur(boxBlur(lum, width, height, radius), width, height, radius)
+        // Clamp the ratio: unbounded division scatters bright values by their
+        // local blur estimate, which wrecks the min-max normalization below.
         val flat = IntArray(width * height) { i ->
-            (lum[i] * 128) / maxOf(1, background[i])
+            ((lum[i] * 128) / maxOf(1, background[i])).coerceAtMost(255)
         }
         var min = Int.MAX_VALUE
         var max = 0

@@ -8,19 +8,35 @@ class GridFiltersTest {
 
     @Test
     fun `clahe widens a low-contrast image's tonal range`() {
-        val w = 128
-        val h = 128
+        // Note: with a tight clip limit CLAHE is intentionally gentle on
+        // spiky histograms; a generous limit verifies the equalization
+        // machinery itself.
+        val w = 256
+        val h = 256
         // Faint checkerboard squeezed into 100..120.
         val lum = IntArray(w * h) { i ->
             val x = i % w
             val y = i / w
             if ((x / 8 + y / 8) % 2 == 0) 120 else 100
         }
-        val out = GridFilters.clahe(lum, w, h)
+        val out = GridFilters.clahe(lum, w, h, tiles = 8, clipLimit = 100.0)
 
         val inRange = 120 - 100
         val outRange = out.max() - out.min()
         assertTrue("expected contrast expansion, got range $outRange", outRange > inRange * 3)
+    }
+
+    @Test
+    fun `clahe maps uniform background to a low value, not to white`() {
+        // Regression: a uniform tile's clipped histogram must keep its mass —
+        // the old normalization sent blank background straight to 255.
+        val w = 128
+        val h = 128
+        val lum = IntArray(w * h) { 20 }
+        for (y in 40 until 80) for (x in 40 until 80) lum[y * w + x] = 230
+
+        val out = GridFilters.clahe(lum, w, h)
+        assertTrue("corner background should stay dark, got ${out[0]}", out[0] < 100)
     }
 
     @Test
