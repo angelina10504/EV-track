@@ -16,7 +16,9 @@ data class Reading(
     val ocrBattery: Int?,
     val ocrRange: Int?,                // raw OCR values, kept for future model training
     val imagePath: String?,            // copy of the image in app-internal storage
-    val synced: Boolean = false        // for future server sync
+    val synced: Boolean = false,       // for future server sync
+    /** Per-field provenance (engine/variant/stage/confidence) as JSON; see ProvenanceJson. */
+    val debugJson: String? = null
 )
 
 object EventType {

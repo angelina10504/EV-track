@@ -17,9 +17,22 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // ONNX Runtime and ML Kit ship native libraries for four ABIs, but a
+        // device loads only one — that duplication was ~84% of the APK.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
+        debug {
+            // Emulators are x86_64; build-type filters merge with defaultConfig,
+            // so debug covers arm64-v8a + x86_64 while release stays arm64 only.
+            ndk {
+                abiFilters += listOf("x86_64")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

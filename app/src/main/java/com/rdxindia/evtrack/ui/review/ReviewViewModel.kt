@@ -13,9 +13,14 @@ import com.rdxindia.evtrack.ocr.EngineLines
 import com.rdxindia.evtrack.ocr.OcrService
 import com.rdxindia.evtrack.ocr.SegmentOcr
 import com.rdxindia.evtrack.parser.DashboardParser
+import com.rdxindia.evtrack.parser.EngineExtraction
+import com.rdxindia.evtrack.parser.EnsembleMerger
+import com.rdxindia.evtrack.parser.EnsembleResult
 import com.rdxindia.evtrack.parser.ExtractionMerger
 import com.rdxindia.evtrack.parser.ExtractionResult
+import com.rdxindia.evtrack.parser.FieldProvenance
 import com.rdxindia.evtrack.parser.OcrLine
+import com.rdxindia.evtrack.parser.ProvenanceJson
 import com.rdxindia.evtrack.util.ImageUtils
 import com.rdxindia.evtrack.util.PrepVariant
 import com.rdxindia.evtrack.util.Preprocessor
@@ -61,6 +66,9 @@ class ReviewViewModel(
 
     private var processed = false
 
+    /** Per-field provenance JSON for the reading saved from this screen. */
+    private var debugJson: String? = null
+
     fun process(imageUri: Uri) {
         if (processed) return
         processed = true
@@ -79,20 +87,51 @@ class ReviewViewModel(
                 return@launch
             }
             val engine = ocrService.engineName
-            val sources = mutableMapOf<String, String>()
+            val provenance = mutableMapOf<String, FieldProvenance>()
+            val pipelineNotes = mutableListOf<String>()
 
             // Stage 1: always ORIGINAL — never feed preprocessed/binarized
-            // images to the first pass. Every configured engine runs here so
-            // the debug panel can compare them; the primary engine's lines are
-            // the ones parsed, so extraction behaviour is unchanged.
+            // images to the first pass. Engines run concurrently and each
+            // parses independently, so the ensemble compares two opinions of
+            // the same image rather than one engine's opinion of two images.
             val engineLines = try {
                 ocrService.recognizeAll(bitmap)
             } catch (_: Exception) {
                 emptyList()
             }
-            val lines = engineLines.firstOrNull()?.lines.orEmpty()
-            var extraction = parser.parse(lines)
-            recordSources(sources, null, extraction, "$engine / ORIGINAL / pass1")
+            val perEngine = engineLines.map { EngineExtraction(it.engineName, parser.parse(it.lines)) }
+            val lines = engineLines.flatMap { it.lines }
+
+            var extraction: ExtractionResult
+            if (perEngine.size >= 2) {
+                val ensemble = EnsembleMerger.merge(perEngine[0], perEngine[1], lastOdo = maxOdo)
+                extraction = ExtractionResult(
+                    odo = ensemble.odo.value,
+                    battery = ensemble.battery.value,
+                    range = ensemble.range.value,
+                    rawLines = lines,
+                    confidenceNotes = perEngine.flatMap { e ->
+                        e.result.confidenceNotes.map { "${e.engineName}: $it" }
+                    }
+                )
+                pipelineNotes += ensemble.notes
+                for (field in ENSEMBLE_FIELDS) {
+                    val outcome = ensemble.outcomeFor(field)
+                    if (outcome.value != null) {
+                        provenance[field] = FieldProvenance(
+                            field = field,
+                            value = outcome.value,
+                            engine = outcome.engine ?: engine,
+                            variant = PrepVariant.ORIGINAL.name,
+                            stage = "pass1-ensemble",
+                            confidence = outcome.confidence
+                        )
+                    }
+                }
+            } else {
+                extraction = perEngine.firstOrNull()?.result ?: parser.parse(emptyList())
+                recordProvenance(provenance, null, extraction, engine, PrepVariant.ORIGINAL.name, "pass1")
+            }
             var retryBitmap: Bitmap? = null
             var retryLines: List<OcrLine> = emptyList()
 
@@ -108,13 +147,13 @@ class ReviewViewModel(
                         ?: ImageUtils.upscaledForOcr(bitmap)
                 }
                 if (upscaled != null) {
-                    val secondLines = ocrStage(upscaled, PrepVariant.ORIGINAL)
-                    if (secondLines.isNotEmpty()) {
-                        val before = extraction
-                        extraction = ExtractionMerger.merge(extraction, parser.parse(secondLines))
-                        recordSources(sources, before, extraction, "$engine / ORIGINAL / retry-highres")
+                    val (merged, firstLines) = ladderStage(
+                        upscaled, PrepVariant.ORIGINAL.name, "retry-highres", extraction, provenance
+                    )
+                    extraction = merged
+                    if (firstLines.isNotEmpty()) {
                         retryBitmap = upscaled
-                        retryLines = secondLines
+                        retryLines = firstLines
                     }
                 }
             }
@@ -122,7 +161,6 @@ class ReviewViewModel(
             // Rungs 2–4: crop to the backlit display, inpaint large glare
             // regions, then walk the preprocessing variant ladder over the
             // cleaned crop until fields fill or rungs run out.
-            val pipelineNotes = mutableListOf<String>()
             val previews = mutableListOf<VariantPreview>()
             if (isMissing(extraction)) {
                 val display = withContext(Dispatchers.Default) {
@@ -159,13 +197,9 @@ class ReviewViewModel(
                             Preprocessor.apply(workingCrop, variant)
                         }
                         previews += VariantPreview(variant.name, thumbnailOf(prepped))
-                        val cropLines = ocrStage(prepped, PrepVariant.ORIGINAL)
-                        if (cropLines.isEmpty()) continue
-                        val before = extraction
-                        extraction = ExtractionMerger.merge(
-                            extraction, parser.parse(cropLines), "display-crop/${variant.name}"
-                        )
-                        recordSources(sources, before, extraction, "$engine / ${variant.name} / $cropTag")
+                        extraction = ladderStage(
+                            prepped, variant.name, cropTag, extraction, provenance
+                        ).first
                     }
 
                     // Rungs 5–6 on the rectified crop: the seven-segment and
@@ -178,11 +212,15 @@ class ReviewViewModel(
                             extraction = segmentRepair(
                                 extraction, cropBitmap, cropLines, "${ExtractionMerger.SEGMENT_PASS} ($cropTag)"
                             )
-                            recordSources(sources, beforeSeg, extraction, "7seg / $cropTag / segment-decode")
+                            recordProvenance(
+                                provenance, beforeSeg, extraction, SEGMENT_ENGINE, cropTag, "segment-decode"
+                            )
                             if (isMissing(extraction)) {
                                 val beforeAnchor = extraction
                                 extraction = anchorRegionDecode(extraction, cropBitmap, cropLines)
-                                recordSources(sources, beforeAnchor, extraction, "7seg / $cropTag / anchor-region")
+                                recordProvenance(
+                                    provenance, beforeAnchor, extraction, SEGMENT_ENGINE, cropTag, "anchor-region"
+                                )
                             }
                         }
                     }
@@ -195,14 +233,20 @@ class ReviewViewModel(
             if (isMissing(extraction)) {
                 val before = extraction
                 extraction = segmentRepair(extraction, bitmap, lines, ExtractionMerger.SEGMENT_PASS)
-                recordSources(sources, before, extraction, "7seg / ORIGINAL / segment-decode")
+                recordProvenance(
+                    provenance, before, extraction, SEGMENT_ENGINE,
+                    PrepVariant.ORIGINAL.name, "segment-decode"
+                )
             }
             if (retryBitmap != null && retryLines.isNotEmpty() && isMissing(extraction)) {
                 val before = extraction
                 extraction = segmentRepair(
                     extraction, retryBitmap, retryLines, "${ExtractionMerger.SEGMENT_PASS} (high-res)"
                 )
-                recordSources(sources, before, extraction, "7seg / ORIGINAL / segment-decode-highres")
+                recordProvenance(
+                    provenance, before, extraction, SEGMENT_ENGINE,
+                    PrepVariant.ORIGINAL.name, "segment-decode-highres"
+                )
             }
 
             // Rung 6 (full frame): decode the region below an anchor whose
@@ -214,14 +258,23 @@ class ReviewViewModel(
                     retryBitmap ?: bitmap,
                     if (retryBitmap != null) retryLines else lines
                 )
-                recordSources(sources, before, extraction, "7seg / ORIGINAL / anchor-region")
+                recordProvenance(
+                    provenance, before, extraction, SEGMENT_ENGINE,
+                    PrepVariant.ORIGINAL.name, "anchor-region"
+                )
             }
+
+            debugJson = ProvenanceJson.build(
+                provenance = provenance,
+                notes = pipelineNotes,
+                engines = engineLines.map { it.engineName }
+            )
 
             _state.value = ReviewState.Ready(
                 bitmap = bitmap,
                 extraction = extraction.copy(
                     confidenceNotes = extraction.confidenceNotes + pipelineNotes,
-                    sources = sources
+                    sources = provenance.mapValues { (_, p) -> p.display() }
                 ),
                 maxOdo = maxOdo,
                 noText = extraction.rawLines.isEmpty(),
@@ -256,18 +309,53 @@ class ReviewViewModel(
         }
     }
 
-    /** Records "value ← engine / variant / stage" for fields this stage filled. */
-    private fun recordSources(
-        sources: MutableMap<String, String>,
+    /**
+     * Runs one retry rung across the configured engines in retry order
+     * (PaddleOCR first), fill-empty-only, recording which engine filled what.
+     * Returns the merged result plus the first engine's lines, which later
+     * pixel-level stages reuse as region proposals.
+     */
+    private suspend fun ladderStage(
+        image: Bitmap,
+        variantName: String,
+        stageName: String,
+        current: ExtractionResult,
+        provenance: MutableMap<String, FieldProvenance>
+    ): Pair<ExtractionResult, List<OcrLine>> {
+        var result = current
+        var firstLines: List<OcrLine> = emptyList()
+        for (ocrEngine in ocrService.retryEngines) {
+            if (!isMissing(result)) break
+            val engineLines = ocrService.runSafely(ocrEngine, image)
+            if (engineLines.isEmpty()) continue
+            if (firstLines.isEmpty()) firstLines = engineLines
+            val before = result
+            result = ExtractionMerger.merge(
+                result, parser.parse(engineLines), "$stageName/${ocrEngine.name}"
+            )
+            recordProvenance(provenance, before, result, ocrEngine.name, variantName, stageName)
+        }
+        return result to firstLines
+    }
+
+    /** Records provenance for each field this stage newly filled. */
+    private fun recordProvenance(
+        provenance: MutableMap<String, FieldProvenance>,
         before: ExtractionResult?,
         after: ExtractionResult,
-        source: String
+        engineName: String,
+        variant: String,
+        stage: String
     ) {
-        if (before?.odo == null && after.odo != null) sources["odo"] = "${after.odo} ← $source"
-        if (before?.battery == null && after.battery != null) {
-            sources["battery"] = "${after.battery} ← $source"
+        if (before?.odo == null && after.odo != null) {
+            provenance["odo"] = FieldProvenance("odo", after.odo, engineName, variant, stage)
         }
-        if (before?.range == null && after.range != null) sources["range"] = "${after.range} ← $source"
+        if (before?.battery == null && after.battery != null) {
+            provenance["battery"] = FieldProvenance("battery", after.battery, engineName, variant, stage)
+        }
+        if (before?.range == null && after.range != null) {
+            provenance["range"] = FieldProvenance("range", after.range, engineName, variant, stage)
+        }
     }
 
     /** Segment-decodes the region under each missing field's anchor box. */
@@ -351,7 +439,8 @@ class ReviewViewModel(
                     ocrOdo = extraction.odo,
                     ocrBattery = extraction.battery,
                     ocrRange = extraction.range,
-                    imagePath = imagePath
+                    imagePath = imagePath,
+                    debugJson = debugJson
                 )
             )
             _state.value = ReviewState.Saved
@@ -359,6 +448,13 @@ class ReviewViewModel(
     }
 
     companion object {
+        /** Pseudo-engine name for the geometric seven-segment decoder. */
+        private const val SEGMENT_ENGINE = "7seg"
+
+        private val ENSEMBLE_FIELDS = listOf(
+            EnsembleResult.FIELD_ODO, EnsembleResult.FIELD_BATTERY, EnsembleResult.FIELD_RANGE
+        )
+
         /** Retry ladder over the display crop, gentlest first. */
         private val DISPLAY_CROP_VARIANTS = listOf(
             PrepVariant.CLAHE_STRETCH,

@@ -5,6 +5,9 @@ import android.graphics.Bitmap
 import com.rdxindia.evtrack.data.DevSettings
 import com.rdxindia.evtrack.data.EngineMode
 import com.rdxindia.evtrack.parser.OcrLine
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /** One engine's output for a single image, for debug display. */
 data class EngineLines(val engineName: String, val lines: List<OcrLine>)
@@ -25,16 +28,31 @@ class OcrService(
 
     val engineName: String get() = primary.name
 
+    /** True when two engines are configured, so ensemble merging applies. */
+    val isEnsemble: Boolean get() = secondary != null
+
+    /** All configured engines, primary first. */
+    val engines: List<OcrEngine> get() = listOfNotNull(primary, secondary)
+
+    /**
+     * Engines in retry-ladder order. PaddleOCR goes first: it reads the
+     * segment-style dashboard fonts the retry stages exist for, and each stage
+     * is fill-empty-only so a later engine can still contribute.
+     */
+    val retryEngines: List<OcrEngine>
+        get() = engines.sortedByDescending { it.name == PADDLE_ENGINE }
+
     /** Unchanged contract: the lines the pipeline parses. */
     suspend fun recognize(bitmap: Bitmap): List<OcrLine> = primary.recognize(bitmap)
 
-    /** Runs every configured engine; the primary's result is first. */
-    suspend fun recognizeAll(bitmap: Bitmap): List<EngineLines> = buildList {
-        add(EngineLines(primary.name, runSafely(primary, bitmap)))
-        secondary?.let { add(EngineLines(it.name, runSafely(it, bitmap))) }
+    /** Runs every configured engine concurrently; the primary's result is first. */
+    suspend fun recognizeAll(bitmap: Bitmap): List<EngineLines> = coroutineScope {
+        engines
+            .map { engine -> async { EngineLines(engine.name, runSafely(engine, bitmap)) } }
+            .awaitAll()
     }
 
-    private suspend fun runSafely(engine: OcrEngine, bitmap: Bitmap): List<OcrLine> =
+    suspend fun runSafely(engine: OcrEngine, bitmap: Bitmap): List<OcrLine> =
         try {
             engine.recognize(bitmap)
         } catch (_: Exception) {
@@ -42,6 +60,8 @@ class OcrService(
         }
 
     companion object {
+        const val PADDLE_ENGINE = "paddle"
+
         /** Builds the service according to the developer engine setting. */
         fun from(context: Context): OcrService = when (DevSettings.engineMode(context)) {
             EngineMode.ML_KIT -> OcrService(MlKitOcrEngine())
