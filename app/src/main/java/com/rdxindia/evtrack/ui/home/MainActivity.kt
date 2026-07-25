@@ -16,8 +16,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.rdxindia.evtrack.EvTrackApp
 import com.rdxindia.evtrack.R
+import com.rdxindia.evtrack.data.DevSettings
+import com.rdxindia.evtrack.data.EngineMode
 import com.rdxindia.evtrack.databinding.ActivityMainBinding
 import com.rdxindia.evtrack.ui.capture.CaptureActivity
 import com.rdxindia.evtrack.ui.detail.DetailActivity
@@ -66,6 +69,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.buttonDevSettings.setOnClickListener { showEnginePicker() }
+
         binding.buttonPickGallery.setOnClickListener {
             pickMedia.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -85,6 +90,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun launchCamera() {
         startActivity(CaptureActivity.newIntent(this))
+    }
+
+    /** Developer-only OCR engine selection; takes effect on the next photo. */
+    private fun showEnginePicker() {
+        val modes = listOf(EngineMode.ML_KIT, EngineMode.PADDLE, EngineMode.BOTH)
+        val labels = arrayOf(
+            getString(R.string.engine_mode_mlkit),
+            getString(R.string.engine_mode_paddle),
+            getString(R.string.engine_mode_both)
+        )
+        val current = modes.indexOf(DevSettings.engineMode(this)).coerceAtLeast(0)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.dev_engine_title)
+            .setSingleChoiceItems(labels, current) { dialog, which ->
+                DevSettings.setEngineMode(this, modes[which])
+                Toast.makeText(
+                    this, getString(R.string.engine_mode_saved, labels[which]), Toast.LENGTH_SHORT
+                ).show()
+                dialog.dismiss()
+            }
+            .show()
     }
 
     private fun openReview(imageUri: Uri) {

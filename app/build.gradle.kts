@@ -35,6 +35,11 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    androidResources {
+        // ONNX models are already compact; keeping them uncompressed lets
+        // ORT read them straight from the APK without inflating first.
+        noCompress += "onnx"
+    }
 }
 
 dependencies {
@@ -58,6 +63,7 @@ dependencies {
     implementation(libs.androidx.camera.view)
 
     implementation(libs.mlkit.text.recognition)
+    implementation(libs.onnxruntime.android)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
 

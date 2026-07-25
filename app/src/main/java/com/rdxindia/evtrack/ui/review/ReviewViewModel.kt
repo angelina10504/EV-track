@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rdxindia.evtrack.data.Reading
 import com.rdxindia.evtrack.data.ReadingRepository
+import com.rdxindia.evtrack.ocr.EngineLines
 import com.rdxindia.evtrack.ocr.OcrService
 import com.rdxindia.evtrack.ocr.SegmentOcr
 import com.rdxindia.evtrack.parser.DashboardParser
@@ -39,7 +40,9 @@ sealed class ReviewState {
         val extraction: ExtractionResult,
         val maxOdo: Int?,
         val noText: Boolean,
-        val variantPreviews: List<VariantPreview> = emptyList()
+        val variantPreviews: List<VariantPreview> = emptyList(),
+        /** Pass-1 lines per engine, for side-by-side debug comparison. */
+        val engineLines: List<EngineLines> = emptyList()
     ) : ReviewState()
 
     data object Saved : ReviewState()
@@ -50,7 +53,7 @@ class ReviewViewModel(
     private val repository: ReadingRepository
 ) : AndroidViewModel(app) {
 
-    private val ocrService = OcrService()
+    private val ocrService = OcrService.from(app)
     private val parser = DashboardParser()
 
     private val _state = MutableStateFlow<ReviewState>(ReviewState.Loading)
@@ -79,8 +82,15 @@ class ReviewViewModel(
             val sources = mutableMapOf<String, String>()
 
             // Stage 1: always ORIGINAL — never feed preprocessed/binarized
-            // images to the first pass.
-            val lines = ocrStage(bitmap, PrepVariant.ORIGINAL)
+            // images to the first pass. Every configured engine runs here so
+            // the debug panel can compare them; the primary engine's lines are
+            // the ones parsed, so extraction behaviour is unchanged.
+            val engineLines = try {
+                ocrService.recognizeAll(bitmap)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val lines = engineLines.firstOrNull()?.lines.orEmpty()
             var extraction = parser.parse(lines)
             recordSources(sources, null, extraction, "$engine / ORIGINAL / pass1")
             var retryBitmap: Bitmap? = null
@@ -215,7 +225,8 @@ class ReviewViewModel(
                 ),
                 maxOdo = maxOdo,
                 noText = extraction.rawLines.isEmpty(),
-                variantPreviews = previews
+                variantPreviews = previews,
+                engineLines = engineLines
             )
         }
     }

@@ -45,6 +45,18 @@
     <string name="variants_header_collapsed">Debug: preprocessed variants ▸</string>
     <string name="variants_header_expanded">Debug: preprocessed variants ▾</string>
     <string name="variant_preview_image">Preprocessed variant preview</string>
+    <string name="engines_header_collapsed">Debug: engine comparison ▸</string>
+    <string name="engines_header_expanded">Debug: engine comparison ▾</string>
+    <string name="engine_column_title">%1$s (%2$d lines)</string>
+    <string name="engine_no_lines">(no lines)</string>
+
+    <!-- Developer settings -->
+    <string name="dev_settings">Developer settings</string>
+    <string name="dev_engine_title">OCR engine</string>
+    <string name="engine_mode_mlkit">ML Kit only</string>
+    <string name="engine_mode_paddle">PaddleOCR only</string>
+    <string name="engine_mode_both">Both (compare in debug)</string>
+    <string name="engine_mode_saved">Engine set to %1$s</string>
 
     <!-- Sanity warnings -->
     <string name="warn_battery_range">Battery must be between 0 and 100</string>

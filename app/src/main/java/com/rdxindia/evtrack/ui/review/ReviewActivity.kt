@@ -16,6 +16,7 @@ import com.rdxindia.evtrack.EvTrackApp
 import com.rdxindia.evtrack.R
 import com.rdxindia.evtrack.data.EventType
 import com.rdxindia.evtrack.databinding.ActivityReviewBinding
+import com.rdxindia.evtrack.ocr.EngineLines
 import com.rdxindia.evtrack.parser.ExtractionResult
 import kotlinx.coroutines.launch
 
@@ -49,6 +50,14 @@ class ReviewActivity : AppCompatActivity() {
             binding.textDebug.visibility = if (visible) View.GONE else View.VISIBLE
             binding.headerDebug.setText(
                 if (visible) R.string.debug_header_collapsed else R.string.debug_header_expanded
+            )
+        }
+
+        binding.headerEngines.setOnClickListener {
+            val visible = binding.engineScroll.visibility == View.VISIBLE
+            binding.engineScroll.visibility = if (visible) View.GONE else View.VISIBLE
+            binding.headerEngines.setText(
+                if (visible) R.string.engines_header_collapsed else R.string.engines_header_expanded
             )
         }
 
@@ -112,8 +121,49 @@ class ReviewActivity : AppCompatActivity() {
             binding.inputBattery.setText(extraction.battery?.toString() ?: "")
             binding.inputRange.setText(extraction.range?.toString() ?: "")
             renderDebug(extraction)
+            renderEngineComparison(state.engineLines)
             renderVariantPreviews(state.variantPreviews)
             validateFields()
+        }
+    }
+
+    /** One labelled column of raw OCR lines per engine, side by side. */
+    private fun renderEngineComparison(engineLines: List<EngineLines>) {
+        if (engineLines.isEmpty()) {
+            binding.headerEngines.visibility = View.GONE
+            return
+        }
+        binding.headerEngines.visibility = View.VISIBLE
+        binding.engineContainer.removeAllViews()
+        val density = resources.displayMetrics.density
+        val columnWidth = (240 * density).toInt()
+
+        for (engine in engineLines) {
+            val column = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    columnWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = (12 * density).toInt() }
+            }
+            column.addView(android.widget.TextView(this).apply {
+                text = getString(R.string.engine_column_title, engine.engineName, engine.lines.size)
+                setTypeface(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+                setPadding(0, (4 * density).toInt(), 0, (4 * density).toInt())
+            })
+            column.addView(android.widget.TextView(this).apply {
+                typeface = android.graphics.Typeface.MONOSPACE
+                textSize = 10f
+                setTextIsSelectable(true)
+                text = if (engine.lines.isEmpty()) {
+                    getString(R.string.engine_no_lines)
+                } else {
+                    engine.lines.joinToString("\n") { line ->
+                        val confidence = line.confidence?.let { " %.2f".format(it) } ?: ""
+                        "\"${line.text}\"$confidence\n  ${line.boxString()}"
+                    }
+                }
+            })
+            binding.engineContainer.addView(column)
         }
     }
 

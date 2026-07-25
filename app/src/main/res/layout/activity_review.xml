@@ -154,6 +154,30 @@
                 android:visibility="gone" />
 
             <TextView
+                android:id="@+id/headerEngines"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp"
+                android:text="@string/engines_header_collapsed"
+                android:textAppearance="?attr/textAppearanceTitleSmall"
+                android:visibility="gone" />
+
+            <HorizontalScrollView
+                android:id="@+id/engineScroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/engineContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
+
+            <TextView
                 android:id="@+id/headerVariants"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
