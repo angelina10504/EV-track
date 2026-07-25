@@ -2,6 +2,7 @@ package com.rdxindia.evtrack.ui.home
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -22,6 +23,7 @@ import com.rdxindia.evtrack.R
 import com.rdxindia.evtrack.data.DevSettings
 import com.rdxindia.evtrack.data.EngineMode
 import com.rdxindia.evtrack.databinding.ActivityMainBinding
+import com.rdxindia.evtrack.ui.batch.BatchTestActivity
 import com.rdxindia.evtrack.ui.capture.CaptureActivity
 import com.rdxindia.evtrack.ui.detail.DetailActivity
 import com.rdxindia.evtrack.ui.review.ReviewActivity
@@ -69,7 +71,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.buttonDevSettings.setOnClickListener { showEnginePicker() }
+        // Developer tooling (engine switch, batch evaluation) is debug-only:
+        // in a release build the entry point does not exist at all.
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        binding.buttonDevSettings.visibility = if (debuggable) View.VISIBLE else View.GONE
+        binding.buttonDevSettings.setOnClickListener { showDevMenu() }
 
         binding.buttonPickGallery.setOnClickListener {
             pickMedia.launch(
@@ -90,6 +96,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun launchCamera() {
         startActivity(CaptureActivity.newIntent(this))
+    }
+
+    /** Developer-only menu; entry point for debug tooling, not the user flow. */
+    private fun showDevMenu() {
+        val options = arrayOf(
+            getString(R.string.dev_option_engine),
+            getString(R.string.dev_option_batch)
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.dev_settings)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showEnginePicker()
+                    1 -> startActivity(BatchTestActivity.newIntent(this))
+                }
+            }
+            .show()
     }
 
     /** Developer-only OCR engine selection; takes effect on the next photo. */

@@ -18,7 +18,12 @@ data class Reading(
     val imagePath: String?,            // copy of the image in app-internal storage
     val synced: Boolean = false,       // for future server sync
     /** Per-field provenance (engine/variant/stage/confidence) as JSON; see ProvenanceJson. */
-    val debugJson: String? = null
+    val debugJson: String? = null,
+    /**
+     * SHA-256 of the image bytes. Matches a reading to a re-picked gallery
+     * image; filenames can't, since the stored copy is renamed on save.
+     */
+    val imageHash: String? = null
 )
 
 object EventType {

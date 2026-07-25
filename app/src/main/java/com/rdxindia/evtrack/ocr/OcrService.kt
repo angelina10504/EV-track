@@ -63,7 +63,10 @@ class OcrService(
         const val PADDLE_ENGINE = "paddle"
 
         /** Builds the service according to the developer engine setting. */
-        fun from(context: Context): OcrService = when (DevSettings.engineMode(context)) {
+        fun from(context: Context): OcrService = forMode(context, DevSettings.engineMode(context))
+
+        /** Builds a service for an explicit mode, ignoring the stored setting. */
+        fun forMode(context: Context, mode: EngineMode): OcrService = when (mode) {
             EngineMode.ML_KIT -> OcrService(MlKitOcrEngine())
             EngineMode.PADDLE -> OcrService(PaddleOcrEngine(context))
             // ML Kit stays primary so extraction behaviour is unchanged.

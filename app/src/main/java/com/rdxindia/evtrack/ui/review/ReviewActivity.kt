@@ -17,6 +17,7 @@ import com.rdxindia.evtrack.R
 import com.rdxindia.evtrack.data.EventType
 import com.rdxindia.evtrack.databinding.ActivityReviewBinding
 import com.rdxindia.evtrack.ocr.EngineLines
+import com.rdxindia.evtrack.pipeline.VariantPreview
 import com.rdxindia.evtrack.parser.ExtractionResult
 import kotlinx.coroutines.launch
 

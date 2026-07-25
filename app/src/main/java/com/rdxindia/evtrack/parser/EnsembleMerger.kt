@@ -12,7 +12,9 @@ data class FieldOutcome(
     val confidence: FieldConfidence?,
     /** Engine that supplied the value; "both" when the engines agreed. */
     val engine: String?,
-    val note: String?
+    val note: String?,
+    /** Which rule settled a disagreement; null unless the engines disagreed. */
+    val tiebreak: String? = null
 )
 
 data class EnsembleResult(
@@ -116,20 +118,20 @@ object EnsembleMerger {
         val confB = lineConfidenceFor(b, second.result.rawLines)
 
         val (winner, winnerEngine, reason) = when {
-            aSane && !bSane -> Triple(a, first.engineName, "sanity check")
-            bSane && !aSane -> Triple(b, second.engineName, "sanity check")
+            aSane && !bSane -> Triple(a, first.engineName, TIEBREAK_SANITY)
+            bSane && !aSane -> Triple(b, second.engineName, TIEBREAK_SANITY)
             confA != null && confB != null && confA != confB ->
-                if (confA > confB) Triple(a, first.engineName, "higher OCR confidence")
-                else Triple(b, second.engineName, "higher OCR confidence")
-            first.engineName == numericPreference -> Triple(a, first.engineName, "engine preference")
-            second.engineName == numericPreference -> Triple(b, second.engineName, "engine preference")
-            else -> Triple(a, first.engineName, "primary engine fallback")
+                if (confA > confB) Triple(a, first.engineName, TIEBREAK_CONFIDENCE)
+                else Triple(b, second.engineName, TIEBREAK_CONFIDENCE)
+            first.engineName == numericPreference -> Triple(a, first.engineName, TIEBREAK_PREFERENCE)
+            second.engineName == numericPreference -> Triple(b, second.engineName, TIEBREAK_PREFERENCE)
+            else -> Triple(a, first.engineName, TIEBREAK_PRIMARY_FALLBACK)
         }
 
         val note = "$field: disagreement — ${first.engineName}=$a vs ${second.engineName}=$b; " +
             "took $winner from $winnerEngine ($reason)"
         notes += note
-        return FieldOutcome(winner, FieldConfidence.LOW, winnerEngine, note)
+        return FieldOutcome(winner, FieldConfidence.LOW, winnerEngine, note, tiebreak = reason)
     }
 
     private fun valueOf(field: String, result: ExtractionResult): Int? = when (field) {
@@ -157,4 +159,13 @@ object EnsembleMerger {
     }
 
     const val ENGINE_BOTH = "both"
+
+    const val TIEBREAK_SANITY = "sanity check"
+    const val TIEBREAK_CONFIDENCE = "higher OCR confidence"
+    const val TIEBREAK_PREFERENCE = "engine preference"
+    const val TIEBREAK_PRIMARY_FALLBACK = "primary engine fallback"
+
+    val TIEBREAK_RULES = listOf(
+        TIEBREAK_SANITY, TIEBREAK_CONFIDENCE, TIEBREAK_PREFERENCE, TIEBREAK_PRIMARY_FALLBACK
+    )
 }

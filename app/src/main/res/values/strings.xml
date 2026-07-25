@@ -57,6 +57,20 @@
     <string name="engine_mode_paddle">PaddleOCR only</string>
     <string name="engine_mode_both">Both (compare in debug)</string>
     <string name="engine_mode_saved">Engine set to %1$s</string>
+    <string name="dev_option_engine">OCR engine</string>
+    <string name="dev_option_batch">Batch test (offline evaluation)</string>
+
+    <!-- Batch evaluation (debug only) -->
+    <string name="batch_title">Batch test</string>
+    <string name="batch_intro">Runs every selected image through the full pipeline once per engine mode (ML Kit, PaddleOCR, Both). Include a ground_truth.csv (filename,odo,battery,range) in the selection or folder to score accuracy.</string>
+    <string name="batch_pick_images">Pick images</string>
+    <string name="batch_pick_folder">Pick folder</string>
+    <string name="batch_use_readings_truth">Use user-edited readings as ground truth</string>
+    <string name="batch_progress">Running %1$d/%2$d — %3$s</string>
+    <string name="batch_done">Batch complete — %1$d rows</string>
+    <string name="batch_failed">Batch failed: %1$s</string>
+    <string name="batch_share_csv">Share CSV</string>
+    <string name="batch_folder_empty">No images found in that folder</string>
 
     <!-- Sanity warnings -->
     <string name="warn_battery_range">Battery must be between 0 and 100</string>
